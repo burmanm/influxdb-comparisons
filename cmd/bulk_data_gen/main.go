@@ -25,7 +25,7 @@ import (
 )
 
 // Output data format choices:
-var formatChoices = []string{"influx-bulk", "es-bulk", "cassandra", "mongo", "opentsdb"}
+var formatChoices = []string{"influx-bulk", "es-bulk", "cassandra", "mongo", "opentsdb", "hawkular"}
 
 // Use case choices:
 var useCaseChoices = []string{"devops", "iot"}
@@ -60,8 +60,8 @@ func init() {
 	flag.StringVar(&useCase, "use-case", useCaseChoices[0], "Use case to model. (choices: devops, iot)")
 	flag.Int64Var(&scaleVar, "scale-var", 1, "Scaling variable specific to the use case.")
 
-	flag.StringVar(&timestampStartStr, "timestamp-start", "2016-01-01T00:00:00Z", "Beginning timestamp (RFC3339).")
-	flag.StringVar(&timestampEndStr, "timestamp-end", "2016-01-01T06:00:00Z", "Ending timestamp (RFC3339).")
+	flag.StringVar(&timestampStartStr, "timestamp-start", "2017-08-31T00:00:00Z", "Beginning timestamp (RFC3339).")
+	flag.StringVar(&timestampEndStr, "timestamp-end", "2017-09-02T00:00:00Z", "Ending timestamp (RFC3339).")
 
 	flag.Int64Var(&seed, "seed", 0, "PRNG seed (default, or 0, uses the current timestamp).")
 	flag.IntVar(&debug, "debug", 0, "Debug printing (choices: 0, 1, 2) (default 0).")
@@ -139,6 +139,8 @@ func main() {
 		serializer = (*Point).SerializeMongo
 	case "opentsdb":
 		serializer = (*Point).SerializeOpenTSDBBulk
+	case "hawkular":
+		serializer = (*Point).SerializeHawkularMetrics
 	default:
 		panic("unreachable")
 	}

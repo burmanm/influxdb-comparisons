@@ -12,6 +12,10 @@ import (
 
 	flatbuffers "github.com/google/flatbuffers/go"
 
+	"hash/fnv"
+
+	"github.com/hawkular/hawkular-client-go/metrics"
+
 	"github.com/influxdata/influxdb-comparisons/mongo_serialization"
 )
 
@@ -31,8 +35,7 @@ type Point struct {
 
 // Using these literals prevents the slices from escaping to the heap, saving
 // a few micros per call:
-var (
-)
+var ()
 
 // scratchBufPool helps reuse serialization scratch buffers.
 var scratchBufPool = &sync.Pool{
@@ -336,6 +339,74 @@ func (p *Point) SerializeMongo(w io.Writer) (err error) {
 
 	// Give the 8-byte buf back to a pool:
 	bufPool8.Put(lenBuf)
+
+	return nil
+}
+
+func (p *Point) SerializeHawkularMetrics(w io.Writer) error {
+	// tagsMap := make(map[uint64]{})
+
+	tagsMap := make(map[string]string)
+
+	// Tags hashing
+	h := fnv.New64a()
+	h.Write(p.MeasurementName)
+	for i := 0; i < len(p.TagKeys); i++ {
+		h.Write(p.TagKeys[i])
+		h.Write(p.TagValues[i])
+		tagsMap[string(p.TagKeys[i])] = string(p.TagValues[i])
+	}
+
+	var hashBase []byte
+	// hashBase := make([]byte, 0)
+	hashBase = h.Sum(hashBase)
+
+	for i := 0; i < len(p.FieldKeys); i++ {
+		fH := fnv.New64a()
+		fH.Write(hashBase)
+		fH.Write(p.FieldKeys[i])
+		tagsMap["metricName"] = string(p.FieldKeys[i])
+
+		hash := fH.Sum64()
+
+		var value interface{}
+		var metricType metrics.MetricType
+
+		// This isn't correct way to set metricType, but the Point does not indicate the real type of the Field
+		switch x := p.FieldValues[i].(type) {
+		case int:
+			metricType = metrics.Counter
+			value = int64(x)
+		case int64:
+			metricType = metrics.Counter
+			value = int64(x)
+		case float32:
+			metricType = metrics.Gauge
+			value = float64(x)
+		case float64:
+			metricType = metrics.Gauge
+			value = float64(x)
+		default:
+		}
+
+		mH := metrics.MetricHeader{
+			Type: metricType,
+			ID:   strconv.Itoa(int(hash)), // Could use Cassandra style naming also, but I'm not interested in using the data that way
+			Data: []metrics.Datapoint{
+				metrics.Datapoint{
+					Timestamp: *p.Timestamp,
+					Value:     value,
+					Tags:      tagsMap,
+				},
+			},
+		}
+
+		enc := json.NewEncoder(w)
+		err := enc.Encode(mH)
+		if err != nil {
+			return err
+		}
+	}
 
 	return nil
 }
